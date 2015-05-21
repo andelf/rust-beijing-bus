@@ -1,0 +1,18 @@
+[package]
+name = "beijing_bus"
+version = "0.0.1"
+authors = ["andelf <andelf@gmail.com>"]
+
+
+[lib]
+name = "bjbus"
+path = "src/lib.rs"
+
+
+
+[dependencies]
+hyper = "*"
+rust-crypto = "*"
+rustc-serialize = "*"
+xml-rs = "*"
+itertools = "0.3.9"
