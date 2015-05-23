@@ -8,7 +8,7 @@ use cipher::Cipher;
 use xml::reader::EventReader;
 use xml::reader::events::XmlEvent;
 use xml::reader::events::XmlEvent::{StartElement, EndElement, Characters};
-use bus::{BusLine, BusStation, LatLng};
+use bus::{BusLine, BusStation, LatLng, RealtimeBus};
 use itertools::Itertools;
 
 pub struct BeijingBusApi {
@@ -42,7 +42,7 @@ impl BeijingBusApi {
         Ok(res)
     }
 
-    pub fn get_realtime_busline_info(&self, id: i32, no: usize) -> Result<()> {
+    pub fn get_realtime_busline_info(&self, id: i32, no: usize) -> Result<Vec<RealtimeBus>> {
         let mut url = "http://bjgj.aibang.com:8899/bus.php".into_url().unwrap();
         url.set_query_from_pairs(vec![
             ("city", "北京"), //"%E5%8C%97%E4%BA%AC"),
@@ -51,26 +51,44 @@ impl BeijingBusApi {
             ("type", "2"),
             ("encrypt", "1"),
             ("versionid", "2")].iter().map(|&pair| pair));
-        println!("debug -> {}", url);
         let mut resp = self.api_open(url).unwrap();
         let mut er = EventReader::new(resp);
 
         let mut last_text: String = String::new();
         let mut cipher = Cipher::new();
         let mut current_tag: String = String::new();
+        let mut buses = Vec::new();
+        let mut current_bus = RealtimeBus::new();
 
         for event in er.events() {
             //println!("line => {:?}", event);
             match event {
                 StartElement { name: name, ..} => {
-                    println!("<{}>", name.local_name);
-                    current_tag = name.local_name.clone()
+                    current_tag = name.local_name.clone();
+                    if current_tag == "bus" {
+                        current_bus = RealtimeBus::new();
+                    }
+
                 }
                 EndElement { name: name } => {
-                    println!("</{}>", name.local_name);
                     match name.local_name.as_ref() {
-                        "gt" => cipher.set_aibang_key(&last_text),
-                        _ => ()
+                        "gt"     => {
+                            cipher.set_aibang_key(&last_text);
+                            current_bus.gps_update_time = i64::from_str(&last_text).unwrap();
+                        }
+                        "id"     => current_bus.id = i32::from_str(&last_text).unwrap(),
+                        "ns"     => current_bus.next_station = last_text.clone(),
+                        "nsn"    => current_bus.next_station_no = i32::from_str(&last_text).unwrap(),
+                        "nsrt"   => current_bus.next_station_run_time = i32::from_str(&last_text).unwrap(),
+                        "nst"    => current_bus.next_station_time = i32::from_str(&last_text).unwrap(),
+                        "sd"     => current_bus.station_distance = i32::from_str(&last_text).unwrap(),
+                        "srt"    => current_bus.station_run_time = i32::from_str(&last_text).unwrap(),
+                        "st"     => current_bus.station_time = i32::from_str(&last_text).unwrap(),
+                        "x"      => current_bus.coords.lng = f32::from_str(&last_text).unwrap(),
+                        "y"      => current_bus.coords.lat = f32::from_str(&last_text).unwrap(),
+                        "ut"     =>  println!("ut => {}", &last_text),
+                        "bus"    => buses.push(current_bus.clone()),
+                        _        => ()
                     }
                 }
                 Characters(text) => {
@@ -80,12 +98,11 @@ impl BeijingBusApi {
                         }
                         _ => last_text = text.into(),
                     }
-                    println!("  TEXT {}", last_text);
                 }
                 _ => ()
             }
         }
-        Ok(())
+        Ok(buses)
 
     }
     pub fn get_busline_info(&self, id: i32) -> Result<BusLine> {
@@ -93,7 +110,7 @@ impl BeijingBusApi {
         let mut resp = self.api_open(&url).unwrap();
         let mut er = EventReader::new(resp);
 
-        let mut line = BusLine { id: id, version: 0, coords: Vec::new(),
+        let mut line = BusLine { id: id, version: 0, route: Vec::new(),
                                  short_name: String::new(), long_name: String::new(),
                                  operation_time: String::new(), stations: Vec::new() };
 
@@ -119,7 +136,7 @@ impl BeijingBusApi {
                                 //let pos = LatLng { lat: f32::}
                                 // println!("loc -> (lat = {}, lng = {})", lat, lng);
                                 let loc = LatLng { lat: lat, lng: lng };
-                                line.coords.push(loc);
+                                line.route.push(loc);
                             }
                         }
                         "no"       => (), //println!("decrypt => {}", cipher.decrypt_str(&last_text).unwrap()),
@@ -130,8 +147,8 @@ impl BeijingBusApi {
                         "time"     => line.operation_time = last_text.clone(),
                         // <station> sub structure
                         "name"     => current_station.name = cipher.decrypt_str(&last_text).unwrap(),
-                        "lat"      => current_station.location.lat = f32::from_str(&cipher.decrypt_str(&last_text).unwrap()).unwrap(),
-                        "lon"      => current_station.location.lng = f32::from_str(&cipher.decrypt_str(&last_text).unwrap()).unwrap(),
+                        "lat"      => current_station.coords.lat = f32::from_str(&cipher.decrypt_str(&last_text).unwrap()).unwrap(),
+                        "lon"      => current_station.coords.lng = f32::from_str(&cipher.decrypt_str(&last_text).unwrap()).unwrap(),
                         "station"  => {
                             line.stations.push(current_station.clone());
                             current_station = BusStation::new();

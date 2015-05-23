@@ -59,17 +59,20 @@ fn run() -> Result<()> {
     let lines: Vec<BusLine> = json::decode(&buf).unwrap();
 
     for line in lines.iter() {
-        println!("line -> {}", line);
+        //println!("line -> {}", line);
 
     }
     let api = BeijingBusApi::new();
 
+    let line_id = 795;
 
-    let ret = api.get_busline_info(87).unwrap();
+    //let ret = api.get_busline_info(87).unwrap();
+    let ret = api.get_busline_info(795).unwrap();
     println!("line -> {}", ret);
     // let ret = api.get_realtime_busline_info(369);
-    let ret = api.get_realtime_busline_info(87, 2000);
+    let ret = api.get_realtime_busline_info(795, 2000).unwrap();
     println!("------{:?}", ret);
+    ret.iter().map(|b| b.describ()).count();
 
 
     Ok(())
@@ -77,6 +80,7 @@ fn run() -> Result<()> {
 
 
 fn main() {
+    // main1();
     match run() {
         _ => ()
     }

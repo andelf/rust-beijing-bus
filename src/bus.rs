@@ -26,7 +26,7 @@ impl Display for LatLng {
 pub struct BusLine {
     pub id: i32,
     pub version: i32,
-    pub coords: Vec<LatLng>,
+    pub route: Vec<LatLng>,
     pub short_name: String,
     pub long_name: String,
     pub operation_time: String,
@@ -42,13 +42,13 @@ impl Display for BusLine {
 
 #[derive(Clone, Debug, RustcDecodable, RustcEncodable)]
 pub struct BusStation {
-    pub location: LatLng,
+    pub coords: LatLng,
     pub name: String
 }
 
 impl Display for BusStation {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        try!(write!(f, "<STATION:{} {}>", self.name, self.location));
+        try!(write!(f, "<STATION:{} {}>", self.name, self.coords));
         Ok(())
     }
 }
@@ -56,16 +56,17 @@ impl Display for BusStation {
 
 impl BusStation {
     pub fn new() -> BusStation {
-        BusStation { location: LatLng::new(), name: String::new() }
+        BusStation { coords: LatLng::new(), name: String::new() }
     }
 }
 
 #[derive(Clone, Debug, RustcDecodable, RustcEncodable)]
 pub struct RealtimeBus {
     pub id: i32,
-    pub location: LatLng,
-    pub next_station: i32,
-    pub next_station_name: String,
+    pub type_: i32,
+    pub coords: LatLng,
+    pub next_station: String,
+    pub next_station_no: i32,
     pub next_station_run_time: i32,
     pub next_station_time: i32,
     pub gps_update_time: i64,
@@ -77,5 +78,13 @@ pub struct RealtimeBus {
 impl RealtimeBus {
     pub fn new() -> RealtimeBus {
         unsafe { mem::zeroed() }
+    }
+
+    pub fn describ(&self) {
+        if self.next_station_run_time == -1 && self.next_station_time == -1 {
+            println!("bus#{} 到站！ => {}", self.id, self.next_station)
+        } else {
+            println!("bus#{} 下一站 => {}", self.id, self.next_station)
+        }
     }
 }
