@@ -1,4 +1,5 @@
-use std::io::Result;
+use std::io;
+use std::io::{Result, Error};
 use std::str::FromStr;
 use hyper::Client;
 use hyper::client::IntoUrl;
@@ -59,9 +60,10 @@ impl BeijingBusApi {
         let mut current_tag: String = String::new();
         let mut buses = Vec::new();
         let mut current_bus = RealtimeBus::new();
+        let mut error_code = 200;
 
         for event in er.events() {
-            //println!("line => {:?}", event);
+            // println!("line => {:?}", event);
             match event {
                 StartElement { name: name, ..} => {
                     current_tag = name.local_name.clone();
@@ -88,6 +90,13 @@ impl BeijingBusApi {
                         "y"      => current_bus.coords.lat = f32::from_str(&last_text).unwrap(),
                         "ut"     =>  println!("ut => {}", &last_text),
                         "bus"    => buses.push(current_bus.clone()),
+                        "status" => error_code = i32::from_str(&last_text).unwrap(),
+                        "message" => {
+                            if error_code != 200 {
+                                return Err(Error::new(io::ErrorKind::NotFound,
+                                                      format!("code={}: {}", error_code, last_text.clone())))
+                            }
+                        }
                         _        => ()
                     }
                 }

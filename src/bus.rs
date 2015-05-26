@@ -1,5 +1,6 @@
-use std::fmt::{Formatter, Result, Error, Display};
+use std::fmt;
 use std::mem;
+use std::io::prelude::*;
 
 // http://stackoverflow.com/questions/385132/proper-best-type-for-storing-latitude-and-longitude
 // Longitudes and latitudes are not generally known to any greater precision than a 32-bit float.
@@ -15,8 +16,8 @@ impl LatLng {
     }
 }
 
-impl Display for LatLng {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+impl fmt::Display for LatLng {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         try!(write!(f, "({}, {})", self.lng, self.lat));
         Ok(())
     }
@@ -33,8 +34,8 @@ pub struct BusLine {
     pub stations: Vec<BusStation>
 }
 
-impl Display for BusLine {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+impl fmt::Display for BusLine {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "<BUS:{} {} ({}站) id={}#{}>",self.long_name, self.operation_time, self.stations.len(), self.id, self.version);
         Ok(())
     }
@@ -46,8 +47,8 @@ pub struct BusStation {
     pub name: String
 }
 
-impl Display for BusStation {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+impl fmt::Display for BusStation {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         try!(write!(f, "<STATION:{} {}>", self.name, self.coords));
         Ok(())
     }
