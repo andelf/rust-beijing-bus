@@ -95,7 +95,6 @@ fn run() -> Result<()> {
     let line_id = 369;
     //let line_id = 983;
 
-    // let conn = Connection::connect("postgresql://wangshuyu@localhost/beijingbus", &SslMode::None).unwrap();
     //let conn = Connection::connect("postgresql://mmgis@192.168.1.38/beijingbus", &SslMode::None).unwrap();
 
 
@@ -163,7 +162,6 @@ fn insert_db() -> Result<()> {
     let lines: Vec<BusLine> = json::decode(&buf).unwrap();
 
     let conn = Connection::connect("postgresql://mmgis@192.168.1.38/beijingbus", &SslMode::None).unwrap();
-    //let conn = Connection::connect("postgresql://wangshuyu@localhost/beijingbus", &SslMode::None).unwrap();
 
     let ret = conn.execute("CREATE TABLE IF NOT EXISTS busline (
                     id              integer PRIMARY KEY,
