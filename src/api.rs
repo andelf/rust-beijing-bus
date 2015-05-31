@@ -30,7 +30,7 @@ impl BeijingBusApi {
                            ("IMEI", "233333333333333"), ("UID", uid.clone()), ("CID", uid.clone()),
                            ("PRODUCT", "nextbus"), ("PLATFORM", "android"), ("VERSION", "1.0.5"),
                            ("FIRST_VERSION", "2"), ("PRODUCTID", "5"), ("VERSIONID", "2"),
-                           ("CUSTOM", "aibang")];
+                           ("CUSTOM", "aibang"), ("User-Agent", "Beijing Realtime Bus Crawler. v0.0.1.")];
         for &(k, v) in headers.iter() {
             h.set_raw(k, vec![v.as_bytes().to_vec()])
         }
@@ -82,13 +82,13 @@ impl BeijingBusApi {
                         "ns"     => current_bus.next_station = last_text.clone(),
                         "nsn"    => current_bus.next_station_no = i32::from_str(&last_text).unwrap(),
                         "nsrt"   => current_bus.next_station_run_time = i32::from_str(&last_text).unwrap(),
-                        "nst"    => current_bus.next_station_time = i32::from_str(&last_text).unwrap(),
+                        "nst"    => current_bus.next_station_time = i64::from_str(&last_text).unwrap(),
                         "sd"     => current_bus.station_distance = i32::from_str(&last_text).unwrap(),
                         "srt"    => current_bus.station_run_time = i32::from_str(&last_text).unwrap(),
                         "st"     => current_bus.station_time = i32::from_str(&last_text).unwrap(),
                         "x"      => current_bus.coords.lng = f32::from_str(&last_text).unwrap(),
                         "y"      => current_bus.coords.lat = f32::from_str(&last_text).unwrap(),
-                        "ut"     =>  println!("ut => {}", &last_text),
+                        "ut"     => (), // println!("ut => {}", &last_text),
                         "bus"    => buses.push(current_bus.clone()),
                         "status" => error_code = i32::from_str(&last_text).unwrap(),
                         "message" => {

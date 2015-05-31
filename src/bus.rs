@@ -68,8 +68,9 @@ pub struct RealtimeBus {
     pub coords: LatLng,
     pub next_station: String,
     pub next_station_no: i32,
+    // b.next_station_time as i64 - b.gps_update_time as i64
     pub next_station_run_time: i32,
-    pub next_station_time: i32,
+    pub next_station_time: i64,
     pub gps_update_time: i64,
     pub station_distance: i32,
     pub station_run_time: i32,
