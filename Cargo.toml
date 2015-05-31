@@ -16,5 +16,14 @@ rust-crypto = "*"
 rustc-serialize = "*"
 xml-rs = "*"
 itertools = "0.3.9"
-postgres = "0.8.9"
-postgis = "*"
+postgres = { version = "*", features = ["time"] }
+time = "*"
+r2d2 = "*"
+r2d2_postgres = "*"
+
+# postgis = "*"
+
+[dependencies.postgis]
+# git = "https://github.com/andelf/rust-postgis"
+path = "../rust-postgis"
+version = "0.1.0"
