@@ -1,4 +1,5 @@
-#![feature(scoped)]
+#![feature(scoped, collections)]
+
 
 extern crate hyper;
 extern crate crypto;
@@ -11,6 +12,8 @@ extern crate postgis;
 extern crate time;
 extern crate r2d2;
 extern crate r2d2_postgres;
+extern crate rand;
+
 mod cipher;
 mod bus;
 mod api;
@@ -34,6 +37,9 @@ use postgis::{NoSRID, Point, LineString, WGS84};
 use postgis::mars;
 
 use r2d2_postgres::PostgresConnectionManager;
+
+use rand::Rand;
+use rand::distributions::{IndependentSample, Range};
 
 fn main1() {
     // Create a client.
@@ -196,10 +202,10 @@ fn insert_db() -> Result<()> {
 
     let manager = PostgresConnectionManager::new("postgresql://mmgis@192.168.1.38/beijingbus", SslMode::None).unwrap();
     let error_handler = Box::new(r2d2::LoggingErrorHandler);
-    let config = r2d2::Config::builder().pool_size(20).connection_timeout(time::Duration::seconds(10)).build();
+    let config = r2d2::Config::builder().pool_size(100).connection_timeout(time::Duration::seconds(20)).build();
     let pool = Arc::new(r2d2::Pool::new(config, manager, error_handler).unwrap());
 
-    for line in lines.iter() {
+    for line in lines.iter() { //.cycle() {
         // let ret = conn.execute("INSERT INTO busline (id, version, short_name, long_name, operation_time, route) VALUES ($1, $2, $3, $4, $5, $6)",
         //                        &[&line.id, &line.version, &line.short_name, &line.long_name, &line.operation_time,
         //                          &line.route.iter().map(|loc| Point::from_gcj02(loc.lng as f64, loc.lat as f64)).collect::<LineString<Point>>()]);
@@ -212,17 +218,23 @@ fn insert_db() -> Result<()> {
         // println!("insert  => {:?}", ret);
 
         // }
+        if line.long_name.matches("运通").count() == 0 {
+            continue;
+        }
 
         let local_pool = pool.clone();
 
         let api = BeijingBusApi::new();
         let line_id = line.id;
 
-        let t = thread::Builder::new().name(format!("LINE-{}", line_id)).scoped(move || {
-            println!("start new thread! named = {}", thread::current().name().unwrap());
-            // get the pool
+        let t = thread::Builder::new().name(format!("LINE-{:04}", line_id)).scoped(move || {
+                println!("start new thread! named = {}", thread::current().name().unwrap());
+                // get the pool
             let conn = local_pool.get().unwrap();
+
             loop {
+                let start_time_ns = time::precise_time_ns();
+
                 let ret = match api.get_realtime_busline_info(line_id, 2000) {
                     Ok(ret) => ret,
                     Err(_)  => return
@@ -247,18 +259,44 @@ fn insert_db() -> Result<()> {
                     inserted.push(bus.id);
 
                 }).count();
-                println!("{}/#{} insert {} skip {}", line.short_name, line_id, inserted.len(), skiped.len());
+                println!("{}: {}/#{} insert={:<2} skip={:<2} tt={:<4}ms",
+                         time::now().ctime(),
+                         //line.short_name, line_id,
+                         line.short_name, thread::current().name().unwrap(),
+                         inserted.len(), skiped.len(),
+                         (time::precise_time_ns() - start_time_ns) / 1000000);
                 thread::sleep_ms(6000);
             }
         });
-        threads.push(t);
+        threads.push(t.unwrap());
         //break;
     }
     Ok(())
 }
 
+
+fn test_gcj02_bad_values() {
+    let mut rng = rand::thread_rng();
+    let between_x = Range::new(72.0f32, 137.8);
+    let between_y = Range::new(0.8293f32, 55.8271);
+
+
+    loop {
+        let (x, y) = (between_x.ind_sample(&mut rng), between_y.ind_sample(&mut rng));
+        println!("{:?} => ", (x,y));
+        let (rx, ry) = mars::to_wgs84(x as f64, y as f64);
+        println!(">> {:?}", (rx, ry));
+    }
+}
+
+
+
 fn main() {
     //main1();
+
+    //test_gcj02_bad_values();
+
+    //println!("===> {:?}", mars::to_wgs84(72.006454, 41.425484));
 
     //match run() {
     match insert_db() {
