@@ -265,7 +265,9 @@ fn insert_db() -> Result<()> {
                          line.short_name, thread::current().name().unwrap(),
                          inserted.len(), skiped.len(),
                          (time::precise_time_ns() - start_time_ns) / 1000000);
-                thread::sleep_ms(6000);
+                if (time::precise_time_ns() - start_time_ns) / 1000000000 < 8 {
+                    thread::sleep_ms(8000);
+                }
             }
         });
         threads.push(t.unwrap());
