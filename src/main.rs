@@ -22,10 +22,12 @@ use std::str::FromStr;
 use std::error::Error;
 use std::iter::FromIterator;
 use std::thread;
+use std::io;
 use std::io::prelude::*;
 use std::fs::File;
 use std::io::Result;
 use std::sync::Arc;
+use std::sync::mpsc::channel;
 
 use rustc_serialize::json;
 use bus::{BusLine, BusStation, LatLng};
@@ -167,7 +169,8 @@ fn insert_db() -> Result<()> {
     try!(f.read_to_string(&mut buf));
     let lines: Vec<BusLine> = json::decode(&buf).unwrap();
 
-    let conn = Connection::connect("postgresql://mmgis@192.168.1.38/beijingbus", &SslMode::None).unwrap();
+    // let conn = Connection::connect("postgresql://mmgis@192.168.1.38/beijingbus", &SslMode::None).unwrap();
+    let conn = Connection::connect("postgresql://wangshuyu@127.0.0.1/beijingbus", &SslMode::None).unwrap();
 
     let ret = conn.execute("CREATE TABLE IF NOT EXISTS busline (
                     id              integer PRIMARY KEY,
@@ -197,82 +200,96 @@ fn insert_db() -> Result<()> {
                   )", &[]);
     println!("create table => {:?}", ret);
 
+
+    let (tx, rx) = channel();
+
+
     // avoid calling drop
     let mut threads = Vec::new();
-
-    let manager = PostgresConnectionManager::new("postgresql://mmgis@192.168.1.38/beijingbus", SslMode::None).unwrap();
+    let connection_str = "postgresql://wangshuyu@127.0.0.1/beijingbus";
+    // let _ = "postgresql://mmgis@192.168.1.38/beijingbus";
+    let manager = PostgresConnectionManager::new(connection_str, SslMode::None).unwrap();
     let error_handler = Box::new(r2d2::LoggingErrorHandler);
-    let config = r2d2::Config::builder().pool_size(100).connection_timeout(time::Duration::seconds(20)).build();
+    let config = r2d2::Config::builder().pool_size(20).connection_timeout(time::Duration::seconds(20)).build();
     let pool = Arc::new(r2d2::Pool::new(config, manager, error_handler).unwrap());
 
-    for line in lines.iter() { //.cycle() {
-        // let ret = conn.execute("INSERT INTO busline (id, version, short_name, long_name, operation_time, route) VALUES ($1, $2, $3, $4, $5, $6)",
-        //                        &[&line.id, &line.version, &line.short_name, &line.long_name, &line.operation_time,
-        //                          &line.route.iter().map(|loc| Point::from_gcj02(loc.lng as f64, loc.lat as f64)).collect::<LineString<Point>>()]);
-        // for (i, station) in line.stations.iter().enumerate() {
-        //     println!("station {} -> {}", i + 1, station.name);
-        //     let seq = (i + 1) as i32;
-        //     let ret = conn.execute("INSERT INTO bus_station (line_id, no, name, coords) VALUES ($1, $2, $3, $4)",
-        //                            &[&line_id, &seq, &station.name, &Point::from_gcj02(station.coords.lng as f64, station.coords.lat as f64)]);
-
-        // println!("insert  => {:?}", ret);
-
+    for line in lines.iter() {
+        // if line.long_name.matches("夜").count() == 0 {
+        //     continue;
         // }
-        if line.long_name.matches("运通").count() == 0 {
-            continue;
-        }
-
-        let local_pool = pool.clone();
 
         let api = BeijingBusApi::new();
         let line_id = line.id;
+        let tx = tx.clone();
 
         let t = thread::Builder::new().name(format!("LINE-{:04}", line_id)).scoped(move || {
-                println!("start new thread! named = {}", thread::current().name().unwrap());
-                // get the pool
-            let conn = local_pool.get().unwrap();
-
+            println!("start new thread! named = {}", thread::current().name().unwrap());
             loop {
                 let start_time_ns = time::precise_time_ns();
 
                 let ret = match api.get_realtime_busline_info(line_id, 2000) {
                     Ok(ret) => ret,
-                    Err(_)  => return
-                };
-                let mut inserted = Vec::new();
-                let mut skiped = Vec::new();
-                ret.iter().map(|bus| {
-                    // line_id_bus_id_coords_gps_time_key
-                    let coords = Point::from_gcj02(bus.coords.lng as f64, bus.coords.lat as f64);
-                    let stmt = conn.prepare("select bus_id from bus_realtime where line_id = $1 and bus_id = $2 and gps_time = $3").unwrap();
-                    let rows = stmt.query(&[&line_id, &bus.id, &time::Timespec::new(bus.gps_update_time, 0)]).unwrap();
-                    if rows.iter().count() == 1 {
-                        //println!("{}/#{} skip!", line.short_name, bus.id);
-                        skiped.push(bus.id);
-                        return ;
+                    Err(_)  => {
+                        print!("E");
+                        thread::sleep_ms(10000);
+                        //continue;
+                        return;
                     }
-                    let nst: Option<time::Timespec> = if bus.next_station_time == -1 { None } else { Some(time::Timespec::new(bus.next_station_time, 0)) };
-                    let ret = conn.execute("INSERT INTO bus_realtime (line_id, bus_id, gps_time, coords, next_station_no, next_station_time) VALUES ($1, $2, $3, $4, $5, $6)",
-                                           &[&line_id, &bus.id, &time::Timespec::new(bus.gps_update_time, 0),
-                                             &coords, &bus.next_station_no, &nst]);
-                    //println!("{}/#{} insert  => {:?}", line.short_name, bus.id, ret);
-                    inserted.push(bus.id);
+                };
+                ret.iter().map(|bus| {
+                    let coords = Point::from_gcj02(bus.coords.lng as f64, bus.coords.lat as f64);
+                    let nst: Option<time::Timespec> = if bus.next_station_time == -1 {
+                        None
+                    } else {
+                        Some(time::Timespec::new(bus.next_station_time, 0))
+                    };
+
+                    tx.send((line_id, bus.id, time::Timespec::new(bus.gps_update_time, 0), coords, bus.next_station_no, nst));
 
                 }).count();
-                println!("{}: {}/#{} insert={:<2} skip={:<2} tt={:<4}ms",
-                         time::now().ctime(),
-                         //line.short_name, line_id,
-                         line.short_name, thread::current().name().unwrap(),
-                         inserted.len(), skiped.len(),
-                         (time::precise_time_ns() - start_time_ns) / 1000000);
                 if (time::precise_time_ns() - start_time_ns) / 1000000000 < 8 {
                     thread::sleep_ms(8000);
                 }
             }
         });
         threads.push(t.unwrap());
-        //break;
     }
+
+    let conn = pool.get().unwrap();
+
+    loop {
+        let (line_id, bus_id, gst, coords, ns_no, nst) = rx.recv().unwrap();
+        let stmt = conn.prepare("select bus_id from bus_realtime where line_id = $1 and bus_id = $2 and gps_time = $3").unwrap();
+        let rows = stmt.query(&[&line_id, &bus_id, &gst]).unwrap();
+        if rows.iter().count() == 1 {
+            //println!("{}/#{} skip!", line.short_name, bus.id);
+            print!(".");
+            continue
+        }
+        let ret = conn.execute("INSERT INTO bus_realtime (line_id, bus_id, gps_time, coords, next_station_no, next_station_time)
+                                VALUES ($1, $2, $3, $4, $5, $6)",
+                               &[&line_id, &bus_id, &gst, &coords, &ns_no, &nst]);
+        print!("!");
+        io::stdout().flush();
+    }
+    /*
+
+                let mut inserted = Vec::new();
+                let mut skiped = Vec::new();
+println!("{}: {}/#{} insert={:<2} skip={:<2} tt={:<4}ms",
+             time::now().ctime(),
+             //line.short_name, line_id,
+             line.short_name, thread::current().name().unwrap(),
+             inserted.len(), skiped.len(),
+             (time::precise_time_ns() - start_time_ns) / 1000000);
+
+                    let nst: Option<time::Timespec> = if bus.next_station_time == -1 { None } else { Some(time::Timespec::new(bus.next_station_time, 0)) };
+                    let ret = conn.execute("INSERT INTO bus_realtime (line_id, bus_id, gps_time, coords, next_station_no, next_station_time) VALUES ($1, $2, $3, $4, $5, $6)",
+                                           &[&line_id, &bus.id, &time::Timespec::new(bus.gps_update_time, 0),
+                                             &coords, &bus.next_station_no, &nst]);
+                    //println!("{}/#{} insert  => {:?}", line.short_name, bus.id, ret);
+                    inserted.push(bus.id);
+*/
     Ok(())
 }
 
