@@ -5,9 +5,8 @@ authors = ["andelf <andelf@gmail.com>"]
 
 
 [lib]
-name = "bjbus"
+name = "beijing_bus"
 path = "src/lib.rs"
-
 
 
 [dependencies]
@@ -21,6 +20,8 @@ time = "*"
 r2d2 = "*"
 r2d2_postgres = "*"
 rand = "*"
+tojson_macros = "*"
+
 
 # postgis = "*"
 

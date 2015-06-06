@@ -1,10 +1,12 @@
+use rustc_serialize::json::ToJson;
+
 use std::fmt;
 use std::mem;
 use std::io::prelude::*;
 
 // http://stackoverflow.com/questions/385132/proper-best-type-for-storing-latitude-and-longitude
 // Longitudes and latitudes are not generally known to any greater precision than a 32-bit float.
-#[derive(Clone, Copy, Debug, RustcDecodable, RustcEncodable)]
+#[derive(Clone, Copy, Debug, RustcDecodable, RustcEncodable, ToJson)]
 pub struct LatLng {
     pub lat: f32,
     pub lng: f32
@@ -23,7 +25,7 @@ impl fmt::Display for LatLng {
     }
 }
 
-#[derive(Debug, RustcDecodable, RustcEncodable)]
+#[derive(Debug, RustcDecodable, RustcEncodable, ToJson)]
 pub struct BusLine {
     pub id: i32,
     pub version: i32,
@@ -41,7 +43,7 @@ impl fmt::Display for BusLine {
     }
 }
 
-#[derive(Clone, Debug, RustcDecodable, RustcEncodable)]
+#[derive(Clone, Debug, RustcDecodable, RustcEncodable, ToJson)]
 pub struct BusStation {
     pub coords: LatLng,
     pub name: String
@@ -61,7 +63,7 @@ impl BusStation {
     }
 }
 
-#[derive(Clone, Debug, RustcDecodable, RustcEncodable)]
+#[derive(Clone, Debug, RustcDecodable, RustcEncodable, ToJson)]
 pub struct RealtimeBus {
     pub id: i32,
     pub type_: i32,

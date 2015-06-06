@@ -1,4 +1,6 @@
 #![feature(scoped, collections, test)]
+#![feature(custom_derive, plugin)]
+#![plugin(tojson_macros)]
 
 extern crate hyper;
 extern crate crypto;
@@ -215,9 +217,9 @@ fn insert_db() -> Result<()> {
     let pool = Arc::new(r2d2::Pool::new(config, manager, error_handler).unwrap());
 
     for line in lines.iter() {
-        // if line.long_name.matches("夜").count() == 0 {
-        //     continue;
-        // }
+        if line.long_name.matches("运通").count() == 0 {
+            continue;
+        }
 
         // if line.id != 873 {
         //     continue
@@ -284,24 +286,7 @@ fn insert_db() -> Result<()> {
         print!("!");
         io::stdout().flush();
     }
-    /*
 
-                let mut inserted = Vec::new();
-                let mut skiped = Vec::new();
-println!("{}: {}/#{} insert={:<2} skip={:<2} tt={:<4}ms",
-             time::now().ctime(),
-             //line.short_name, line_id,
-             line.short_name, thread::current().name().unwrap(),
-             inserted.len(), skiped.len(),
-             (time::precise_time_ns() - start_time_ns) / 1000000);
-
-                    let nst: Option<time::Timespec> = if bus.next_station_time == -1 { None } else { Some(time::Timespec::new(bus.next_station_time, 0)) };
-                    let ret = conn.execute("INSERT INTO bus_realtime (line_id, bus_id, gps_time, coords, next_station_no, next_station_time) VALUES ($1, $2, $3, $4, $5, $6)",
-                                           &[&line_id, &bus.id, &time::Timespec::new(bus.gps_update_time, 0),
-                                             &coords, &bus.next_station_no, &nst]);
-                    //println!("{}/#{} insert  => {:?}", line.short_name, bus.id, ret);
-                    inserted.push(bus.id);
-*/
     Ok(())
 }
 
