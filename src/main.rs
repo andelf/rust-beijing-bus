@@ -46,7 +46,9 @@ use r2d2_postgres::PostgresConnectionManager;
 use rand::Rand;
 use rand::distributions::{IndependentSample, Range};
 
-fn main1() {
+static CONNECTION_URI: &'static str = "postgresql://wangshuyu@127.0.0.1/beijingbus";
+
+fn update_from_api() {
     // Create a client.
     let api = BeijingBusApi::new();
     let line_id_versions = api.update_id_versions().unwrap();
@@ -78,93 +80,80 @@ fn main1() {
 }
 
 
-static create_bus_station_table: &'static str = "
-CREATE TABLE bus_station (
-    id              serial PRIMARY KEY,
-    coords          geography(POINT, 4326),
-    name            text,
-    line_id         integer,
-    no              integer
-)
-";
 
-/// r##"  "##;
-
-
-fn run() -> Result<()> {
+fn init_db() -> Result<()> {
     let mut f = File::open("data.json").unwrap();
     let mut buf = String::new();
     try!(f.read_to_string(&mut buf));
     let lines: Vec<BusLine> = json::decode(&buf).unwrap();
 
-    for line in lines.iter() {
-        //println!("line -> {}", line);
+    create_table();
 
-    }
     let api = BeijingBusApi::new();
 
-    let line_id = 369;
-    //let line_id = 983;
-
-    //let conn = Connection::connect("postgresql://mmgis@192.168.1.38/beijingbus", &SslMode::None).unwrap();
+    let conn = Connection::connect(CONNECTION_URI, &SslMode::None).unwrap();
 
 
-
-//     let ret = conn.execute("CREATE TABLE realtime_bus (
-
-//   )
-
-// ")
-    // let ret = conn.execute(create_bus_station_table, &[]);
-    // println!("create table => {:?}", ret);
-    //let ret = api.get_busline_info(87).unwrap();
-    let line = api.get_busline_info(line_id).unwrap();
-    println!("line -> {}", line);
-
-    // let ret = conn.execute("INSERT INTO busline (id, version, short_name, long_name, operation_time, route) VALUES ($1, $2, $3, $4, $5, $6)",
-    //                        &[&332, &22, &"116", &"116(城铁柳芳站-龙潭公园)", &"5:00-24:00",
-    //                          &LineString::from_iter(vec![
-    //                              Point::<WGS84>::new(123.0, 49.0), Point::new(133.0, 59.0), Point::new(153.0, 80.0)])]);
-    // // let ret = conn.execute("INSERT INTO busline (id, version, short_name, long_name, operation_time) VALUES ($1, $2, $3, $4, $5)",
-    // //                        &[&87, &21, &"116", &"116(城铁柳芳站-龙潭公园)", &"5:00-24:00",]);
-
-
-    // println!("insert  => {:?}", ret);
-
-    // let ret = conn.execute("INSERT INTO bus_station (coords, name, line_id, no) VALUES ($1, $2, $3, $4)",
-    //                        &[
-    //                            &{
-    //                                let mut pt = Point::new();
-    //                                pt
-    //                            },
-    //                            &"通州小街桥东", &233, &23]);
-
-
-    // println!("insert  => {:?}", ret);
-
-    // let stmt = conn.prepare("SELECT * FROM busline where id = 107").unwrap();
-    // //let stmt = conn.prepare("SELECT * FROM bus_station").unwrap();
-    // for row in stmt.query(&[]).unwrap() {
-    //     // println!("row => {:?}", row);
-    //     // println!(">>>>>> {:?}", row.get_bytes("route"));
-    //     println!(">>>>>> {}", row.get::<_, LineString<Point>>("route"));
-
-    //     //println!(">>>>>> {:?}", row.get::<_, postgis::Point>("coords"));
-    // }
-
-    // let ret = api.get_realtime_busline_info(369);
-    let ret = try!(api.get_realtime_busline_info(line_id, 2000));
-    println!("------{:?}", ret);
-    ret.iter().map(|b| {
-        b.describ();
-        print!("mars => {} ", b.coords);
-        println!("earth => {:?}", mars::to_wgs84(b.coords.lng as f64, b.coords.lat as f64));
-        println!("nsrt {} nst {} ---- {}", b.next_station_run_time, b.next_station_time, b.next_station_time as i64 - b.gps_update_time as i64);
-    }).count();
-
+    for line in lines.iter() {
+        let ret = conn.execute(
+            "INSERT INTO bus_line (id, version, short_name, long_name, operation_time, route) VALUES ($1, $2, $3, $4, $5, $6)",
+            &[&line.id, &line.version, &line.short_name, &line.long_name, &line.operation_time,
+              &line.route.iter().map(|loc| Point::from_gcj02(loc.lng as f64, loc.lat as f64)).collect::<LineString<Point>>()]);
+        println!("busline {} {:?}", line.long_name, ret);
+        for (i, station) in line.stations.iter().enumerate() {
+            println!("station {} -> {}", i + 1, station.name);
+            let seq = (i + 1) as i32;
+            let ret = conn.execute(
+                "INSERT INTO bus_station (line_id, no, name, coords) VALUES ($1, $2, $3, $4)",
+                &[&line.id, &seq, &station.name, &Point::from_gcj02(station.coords.lng as f64, station.coords.lat as f64)]);
+            println!("insert  => {:?}", ret);
+        }
+    }
 
     Ok(())
 }
+
+
+fn create_table() -> postgres::Result<()> {
+    let conn = Connection::connect(CONNECTION_URI, &SslMode::None).unwrap();
+
+    try!(conn.execute("CREATE TABLE IF NOT EXISTS bus_line (
+                    id              integer PRIMARY KEY,
+                    version         integer,
+                    short_name      varchar(10),
+                    long_name       text,
+                    operation_time  varchar(30),
+                    route           geometry(LINESTRING,4326)
+                  )", &[]));
+    try!(conn.execute("CREATE TABLE IF NOT EXISTS bus_station (
+                    id              serial PRIMARY KEY,
+                    line_id         integer,
+                    no              integer,
+                    name            text,
+                    coords          geometry(POINT,4326)
+                  )", &[]));
+    try!(conn.execute("CREATE INDEX ON bus_station ( line_id )", &[]));
+    try!(conn.execute("CREATE INDEX ON bus_station ( no )", &[]));
+
+    try!(conn.execute("CREATE TABLE IF NOT EXISTS bus_realtime (
+                    id              serial PRIMARY KEY,
+                    line_id         integer,
+                    bus_id          integer,
+                    coords          geometry(POINT,4326),
+                    gps_time        timestamptz,
+                    next_station_no integer,
+                    next_station_time timestamptz,
+                    recorded_at     timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (line_id, bus_id, gps_time)
+                  )", &[]));
+
+    try!(conn.execute("CREATE INDEX ON bus_realtime ( line_id )", &[]));
+    try!(conn.execute("CREATE INDEX ON bus_realtime ( bus_id )", &[]));
+    try!(conn.execute("CREATE INDEX ON bus_realtime ( gps_time )", &[]));
+    try!(conn.execute("CREATE INDEX ON bus_realtime ( recorded_at )", &[]));
+    Ok(())
+}
+
 
 fn insert_db() -> Result<()> {
     let mut f = File::open("data.json").unwrap();
@@ -172,46 +161,12 @@ fn insert_db() -> Result<()> {
     try!(f.read_to_string(&mut buf));
     let lines: Vec<BusLine> = json::decode(&buf).unwrap();
 
-    //let connection_str = "postgresql://wangshuyu@127.0.0.1/beijingbus";
-    let connection_str = "postgresql://mmgis@192.168.1.38/beijingbus";
-
-    let conn = Connection::connect(connection_str, &SslMode::None).unwrap();
-
-    let ret = conn.execute("CREATE TABLE IF NOT EXISTS busline (
-                    id              integer PRIMARY KEY,
-                    version         integer,
-                    short_name      varchar(10),
-                    long_name       text,
-                    operation_time  varchar(30),
-                    route           geography(LINESTRING,4326)
-                  )", &[]);
-    let ret = conn.execute("CREATE TABLE IF NOT EXISTS bus_station (
-                    id              serial PRIMARY KEY,
-                    line_id         integer,
-                    no              integer,
-                    name            text,
-                    coords          geography(POINT,4326)
-                  )", &[]);
-    let ret = conn.execute("CREATE TABLE IF NOT EXISTS bus_realtime (
-                    id              serial PRIMARY KEY,
-                    line_id         integer,
-                    bus_id          integer,
-                    coords          geography(POINT,4326),
-                    gps_time        timestamptz,
-                    next_station_no integer,
-                    next_station_time timestamptz,
-                    recorded_at     timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE (line_id, bus_id, gps_time)
-                  )", &[]);
-    println!("create table => {:?}", ret);
-
-
     let (tx, rx) = channel();
 
 
     // avoid calling drop
     let mut threads = Vec::new();
-    let manager = PostgresConnectionManager::new(connection_str, SslMode::None).unwrap();
+    let manager = PostgresConnectionManager::new(CONNECTION_URI, SslMode::None).unwrap();
     let error_handler = Box::new(r2d2::LoggingErrorHandler);
     let config = r2d2::Config::builder().pool_size(20).connection_timeout(time::Duration::seconds(20)).build();
     let pool = Arc::new(r2d2::Pool::new(config, manager, error_handler).unwrap());
@@ -307,12 +262,7 @@ fn test_gcj02_bad_values(b: &mut test::Bencher) {
 
 
 fn main() {
-    //main1();
-
-    //test_gcj02_bad_values();
-
-    //println!("===> {:?}", mars::to_wgs84(72.006454, 41.425484));
-
+    init_db();
     //match run() {
     match insert_db() {
         Err(e) => {

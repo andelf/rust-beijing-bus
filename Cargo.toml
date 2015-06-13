@@ -28,4 +28,4 @@ tojson_macros = "*"
 [dependencies.postgis]
 # git = "https://github.com/andelf/rust-postgis"
 path = "../rust-postgis"
-version = "0.1.0"
+version = "*"
